@@ -1,0 +1,62 @@
+object Form1: TForm1
+  Left = 0
+  Top = 0
+  Caption = 'Form1'
+  ClientHeight = 480
+  ClientWidth = 649
+  FormFactor.Width = 320
+  FormFactor.Height = 480
+  FormFactor.Devices = [Desktop]
+  OnDestroy = FormDestroy
+  DesignerMasterStyle = 0
+  object Button1: TButton
+    Position.X = 96.000000000000000000
+    Position.Y = 400.000000000000000000
+    TabOrder = 2
+    Text = #21021#22987#21270
+    OnClick = Button1Click
+  end
+  object Memo1: TMemo
+    Touch.InteractiveGestures = [Pan, LongTap, DoubleTap]
+    DataDetectorTypes = []
+    Lines.Strings = (
+      'function Factorial(x: integer): integer;'
+      'begin'
+      '  { recursive Factorial algorithm }'
+      '  if x > 1 then'
+      '    result := x * Factorial(x - 1)'
+      '  else'
+      '    result := 1;'
+      'end;'
+      ''
+      'function Fibonaci(x: integer): integer;'
+      'var'
+      '  i: integer;'
+      'begin'
+      '  { non-recursive Fibonaci algorithm }'
+      '  result := 1+2*3;'
+      '  for i := 1 to x do'
+      '   begin'
+      '    result := result + i;'
+      '    if result > 10 then'
+      '      break;'
+      '   end;'
+      'end;'
+      ''
+      'begin'
+      '  ShowMessage('#39'Hello world'#39');'
+      '  ShowMessage('#39'Factorial of 5 is: '#39' + IntToStr(Factorial(5)));'
+      '  ShowMessage('#39'Fibonaci of 5 is: '#39' + IntToStr(Fibonaci(5)));'
+      'end;')
+    ReadOnly = True
+    TextSettings.Font.Family = 'Courier New'
+    Position.X = 64.000000000000000000
+    Position.Y = 15.000000000000000000
+    Size.Width = 561.000000000000000000
+    Size.Height = 369.000000000000000000
+    Size.PlatformDefault = False
+    TabOrder = 1
+    Viewport.Width = 541.000000000000000000
+    Viewport.Height = 365.000000000000000000
+  end
+end
