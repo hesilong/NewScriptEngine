@@ -498,8 +498,18 @@ Type
       FInitialStackTop: integer;
       FProcStack: array [0 .. StackSize - 1] of TStackValue;
       FStackTop : Integer;  // indicate the top of stack
-      FOutputBase: integer;
+      FStackBase: integer; // índicate the base of stac
+      FInputBase: integer; // índicate the first input index  of the argument
+      FOutputBase: integer; // indicate the first output index of the argument
+      FInputOffset: integer; // offset depend on input base
+      FOutputOffset: integer; // offset depend on output base
+      FCurrentInputArgBase: integer; // in-CallProc input argument index
+      FCurrentArrayIndexBase: integer; // in-CallProc input array index base
+      FCurrentOutputArgIndex: integer; // in-CallProc output argument index
       FFastSolving: boolean;
+
+      { execution control }
+      function ExecProcess(ParamCount: integer): integer;
 
       procedure SetRunning(const Value: boolean);
       procedure InitializeScript(ADoBeforeExecute: boolean);
@@ -1011,6 +1021,64 @@ begin
     raise Exception.Create(Format('Subroutine ''%s'' does not exist in script', [ALabel]));
 end;
 
+function TxbVirtualMachine.ExecProcess(ParamCount: integer): integer;
+var
+  OldStackTop: Integer;
+  OldStackBase: Integer;
+  OldInputBase: Integer;
+  OldOutputBase: Integer;
+  OldInputOffset: Integer;
+  OldOutputOffset: Integer;
+  OldPrepareInstruction: pSimplifiedCode;
+  OldCurrentInputArgBase: integer;
+  OldCurrentArrayIndexBase: integer;
+  OldCurrentOutputArgIndex: integer;
+  ReturnInstruction: pSimplifiedCode;
+begin
+  Result := -1;
+  try
+    OldStackTop := FStackTop;
+    OldStackBase := FStackBase;
+    OldInputBase := FInputBase;
+    OldOutputBase := FOutputBase;
+    OldInputOffset := FInputOffset;
+    OldOutputOffset := FOutputOffset;
+    OldPrepareInstruction := FPrepareInstruction;
+    OldCurrentInputArgBase := FCurrentInputArgBase;
+    OldCurrentArrayIndexBase := FCurrentArrayIndexBase;
+    OldCurrentOutputArgIndex := FCurrentOutputArgIndex;
+
+    ReturnInstruction := FNextInstruction;
+
+    FInputBase := FStackTop - ParamCount;
+    FInputOffset := 0;
+    FStackBase := FStackTop;
+    try
+      while FCurrentInstruction <> nil do
+      begin
+        FNextInstruction := FCurrentInstruction^.Next;
+        FCurrentInstruction.Compute;
+        FCurrentInstruction := FNextInstruction;
+      end;
+    finally
+      FNextInstruction := ReturnInstruction;
+      Result := FStackTop - OldStackTop;
+      FPrepareInstruction := OldPrepareInstruction;
+      FStackTop := OldStackTop;
+      FStackBase := OldStackBase;
+      FInputBase := OldInputBase;
+      FOutputBase := OldOutputBase;
+      FInputOffset := OldInputOffset;
+      FOutputOffset := OldOutputOffset;
+      FCurrentInputArgBase := OldCurrentInputArgBase;
+      FCurrentArrayIndexBase := OldCurrentArrayIndexBase;
+      FCurrentOutputArgIndex := OldCurrentOutputArgIndex;
+    end;
+  except on e: Exception do
+    raise ;
+  end;
+end;
+
 function TxbVirtualMachine.Execute: TScriptValue;
 begin
   Result := Execute(null);
@@ -1025,6 +1093,7 @@ var
   _StackTop: integer;
   InputParamCount : Integer;
   dataSize: integer;
+  outputParamCount: integer;
 begin
   with Script do
   begin
@@ -1099,6 +1168,8 @@ begin
         InputParamCount := 0;
       { gets the local variable data size from inPrepare instruction }
       dataSize := FCurrentInstruction^.vInteger;
+      { runs the subroutine }
+      outputParamCount := ExecProcess(InputParamCount) - dataSize;
     finally
 
     end;
