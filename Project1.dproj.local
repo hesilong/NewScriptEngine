@@ -1,0 +1,31 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<BorlandProject>
+	<Transactions>
+    <Transaction>2017/09/26 10:10:41.000.486,=C:\Users\win7\Documents\Embarcadero\Studio\Projects\Unit1.pas</Transaction>
+    <Transaction>2017/09/27 14:19:04.000.120,=C:\Users\win7\Documents\Embarcadero\Studio\Projects\Unit1.pas</Transaction>
+    <Transaction>2017/09/27 14:30:34.000.875,=C:\Users\win7\Documents\Embarcadero\Studio\Projects\Unit1.pas</Transaction>
+    <Transaction>2017/09/27 14:32:18.000.774,=C:\Users\win7\Documents\Embarcadero\Studio\Projects\Unit1.pas</Transaction>
+    <Transaction>2017/09/27 14:33:23.000.416,=C:\Users\win7\Documents\Embarcadero\Studio\Projects\Unit1.pas</Transaction>
+    <Transaction>2017/09/28 09:31:12.000.721,=C:\Users\win7\Documents\Embarcadero\Studio\Projects\Unit1.pas</Transaction>
+    <Transaction>2017/09/28 09:33:59.000.713,=C:\Users\win7\Documents\Embarcadero\Studio\Projects\Unit1.pas</Transaction>
+    <Transaction>2017/12/04 10:06:41.000.706,=C:\Users\win7\Documents\Embarcadero\Studio\Projects\Unit1.pas</Transaction>
+    <Transaction>2018/02/09 17:10:30.000.598,=C:\Users\win7\Documents\Embarcadero\Studio\Projects\Unit1.pas</Transaction>
+    <Transaction>2018/10/09 09:22:04.000.430,=C:\Users\win7\Documents\Embarcadero\Studio\Projects\Unit1.pas</Transaction>
+    <Transaction>2018/10/09 09:23:09.000.363,C:\Users\win7\Documents\Embarcadero\Studio\Projects\Unit1.pas=D:\Delphi Relative\TestProjects\NewScriptEngine\Unit1.pas</Transaction>
+    <Transaction>2018/10/09 09:23:09.000.363,C:\Users\win7\Documents\Embarcadero\Studio\Projects\Unit1.fmx=D:\Delphi Relative\TestProjects\NewScriptEngine\Unit1.fmx</Transaction>
+    <Transaction>2018/10/09 09:23:14.000.428,C:\Users\win7\Documents\Embarcadero\Studio\Projects\Project1.dproj=D:\Delphi Relative\TestProjects\NewScriptEngine\Project1.dproj</Transaction>
+    <Transaction>2018/10/09 09:23:19.000.745,=D:\Delphi Relative\TestProjects\NewScriptEngine\Unit2.pas</Transaction>
+    <Transaction>2018/10/09 09:24:32.000.760,D:\Delphi Relative\TestProjects\NewScriptEngine\Unit2.pas=D:\Delphi Relative\TestProjects\NewScriptEngine\xbScript.pas</Transaction>
+    <Transaction>2018/10/09 09:57:54.000.955,=D:\Delphi Relative\TestProjects\NewScriptEngine\Unit2.pas</Transaction>
+    <Transaction>2018/10/09 09:58:53.000.235,D:\Delphi Relative\TestProjects\NewScriptEngine\Unit2.pas=D:\Delphi Relative\TestProjects\NewScriptEngine\xbParser.pas</Transaction>
+    <Transaction>2018/10/09 10:29:00.000.824,=D:\Delphi Relative\TestProjects\NewScriptEngine\Unit2.pas</Transaction>
+    <Transaction>2018/10/09 10:30:43.000.869,D:\Delphi Relative\TestProjects\NewScriptEngine\Unit2.pas=D:\Delphi Relative\TestProjects\NewScriptEngine\Language.Scripter.pas</Transaction>
+    <Transaction>2018/10/09 10:39:20.000.803,=D:\Delphi Relative\TestProjects\NewScriptEngine\Unit2.pas</Transaction>
+    <Transaction>2018/10/09 10:39:40.000.766,D:\Delphi Relative\TestProjects\NewScriptEngine\Unit2.pas=D:\Delphi Relative\TestProjects\NewScriptEngine\Language.Pascal.pas</Transaction>
+    <Transaction>2018/11/13 19:25:11.000.074,=D:\Delphi Relative\TestProjects\NewScriptEngine\Unit2.pas</Transaction>
+    <Transaction>2018/11/13 19:25:24.000.281,D:\Delphi Relative\TestProjects\NewScriptEngine\Unit2.pas=D:\Delphi Relative\TestProjects\NewScriptEngine\TestUnit.pas</Transaction>
+  </Transactions>
+	<ActiveMobileDevice>
+		<NoProfile iOSSimulator="iPhone5" Android="ROC02V1VQX"/>
+	</ActiveMobileDevice>
+</BorlandProject>
