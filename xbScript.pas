@@ -611,10 +611,11 @@ Type
   TxbScriptInfo = class(TComponent)
     private
       FRoutines: TxbRoutinesInfo;
+      FCodeSize: integer;
       FGlobals: TxbVariablesInfo;
       FMainRoutine: TxbRoutineInfo;
 
-
+      FUnitName: string;
       procedure SetGlobals(const Value: TxbVariablesInfo);
       procedure SetRoutines(const Value: TxbRoutinesInfo);
     public
@@ -630,6 +631,10 @@ Type
       property Routines: TxbRoutinesInfo read FRoutines write SetRoutines;
       property Globals: TxbVariablesInfo read FGlobals write SetGlobals;
 
+      ///  <summary>
+      ///  Retrives the number of p-code instructions generated after compilation. In other words, it's the size of the "executable".
+      ///  </summary>
+      property CodeSize: integer read FCodeSize;
       ///  <summary>
       ///  Retrieves the TatRoutineInfo obejct associated with the script main block (which is treated in a similar way as
       ///  any other routine in script).
@@ -1111,7 +1116,7 @@ begin
     FRunning := True;
     oldcurrent := self.Script.Scripter.FCurrentScript;
     Self.Script.Scripter.FCurrentScript := Self.Script;
-    if Not Assigned(PrepareInstruction) then
+    if Not Assigned(PrepareInstruction) then  // not reentrant call
     begin
       { runtime stack initialization }
 //      if InitializeStack then
@@ -1170,8 +1175,33 @@ begin
       dataSize := FCurrentInstruction^.vInteger;
       { runs the subroutine }
       outputParamCount := ExecProcess(InputParamCount) - dataSize;
+      { returns output arguments }
+      if outputParamCount = 0 then
+        Result := null
+      else if outputParamCount = 1 then
+        Result := FProcStack[FStackTop + dataSize]
+      else
+      begin
+        Result := VarArrayCreate([0,outputParamCount - 1], varVariant);
+        for c := 0 to outputParamCount - 1 do
+          Result[c] := FProcStack[FStackTop + dataSize + c];
+      end;
+      dec(FStackTop, InputParamCount);
     finally
-
+      if not Assigned(PrepareInstruction) then  // not reentrant call(非递归调用)
+      begin
+        FNextInstruction := nil;
+        for c := StackSize - 1 downto ScriptInfo.Globals.Count do
+            VarClear(FProcStack[c]);
+        FRunning := false;
+      end else
+      begin
+        { retrieve instruction state for reentrant calls }
+        FNextInstruction := oldNextInstruction;
+        { restore the stack-top of the process that was interrupted by this call }
+        FStackTop := _StackTop;
+      end;
+      self.Script.Scripter.FCurrentScript := oldcurrent;
     end;
   end;
 end;
@@ -1549,8 +1579,11 @@ begin
     FParser.ScanSyntaxTree;
 
     SolveUndefinedReferences;
-  finally
+    FCompiled := not Silent;
 
+    FScriptInfo.FCodeSize := FCodeLine + 1;
+  finally
+    FCompiling := false;
   end;
 end;
 
