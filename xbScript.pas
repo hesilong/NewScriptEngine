@@ -187,6 +187,13 @@ Type
   pAddrVector = ^TAddrVector;
   TAddrVector = array[0..0] of pSimplifiedCode;
 
+const
+  vtLongInt = 0100; { =0 }
+  vtSingle = 0400; { =0 }
+  vtByte = 0502; { =2 }
+  vtDouble = 0912; { =12}
+  vtReal = 1012; { =12 }
+type
   TScriptClass = class of TxbScript;
 
   TxbScripts = class;
@@ -385,6 +392,9 @@ Type
       procedure SolveUndefinedReferences;
       function EmptyStack(StackType: TStackType): boolean;
       function StackPop(StackType: TStackType): TScriptValue;
+      function DeclareVariable(AName: string; AArgIndex: integer = -1;
+        AModifier: TxbArgumentModifier = moNone; AGlobal: boolean = false; ASourcePos: integer = -1)
+        : TxbVariableInfo;
       function AppendInstruction(i: TInstruction): pSimplifiedCode;
       procedure DisposeCode(var Code: pSimplifiedCode);
       ///<summary>vProc.Data to relative class indexing</summary>
@@ -670,6 +680,12 @@ Type
       FByRefArgMask: integer;
       FResultIndex: integer;
     public
+      ///  <summary>
+      ///  Returns a TatVariableInfo object related to the variable (or parameter) specified by the name AName. If the variable
+      ///  or parameter doesn't exist, VariableByName returns nil.
+      ///  </summary>
+      function VariableByName(AName: string): TxbVariableInfo;
+
       ///  <remarks>
       ///  Returns the number of local variables declared in the routine. This function doesn't take into account the routine
       ///  parameters, only effective local variables. Note that the result variable (in case of a function routine) is also
@@ -727,6 +743,22 @@ Type
       ///  </summary>
       function Add: TxbVariableInfo;
 
+      ///  <summary>
+      ///  Returns the index of the variable which name is specified by AName. If no variable is found, IndexOf returns -1.
+      ///  </summary>
+      function IndexOf(AName: string): integer;
+
+      ///  <summary>
+      ///  Returns the TatVariableInfo object which corresponds to the variable which name is specified by Name. If no variable
+      ///  is found, FindByName returns nil.
+      ///  </summary>
+      function FindByName(AName: string): TxbVariableInfo;
+
+      ///  <summary>
+      ///  Provides indexed access to the TatVariableInfo objects in the collection.
+      ///  </summary>
+      property Items[i: integer]: TxbVariableInfo read GetItem; default;
+
   end;
 
   ///  <remarks>
@@ -735,7 +767,7 @@ Type
   ///  vvPublic - Global variable was declared as public (visible to other scripts)
   ///  vvPrivate - Global variable was declared as private (visible only from script itself)
   ///  </remarks>
-  TatVariableVisibility = (vvPublic, vvPrivate);
+  TxbVariableVisibility = (vvPublic, vvPrivate);
 
   ///  <remarks>
   ///  Holds information about a variable declared in the script. Although the word "variable" here, it's important to
@@ -753,7 +785,7 @@ Type
       FTypeDecl: string;
       // string contendo informações sobre o tipo da variável ou argumento de subrotina
       FSystemType: integer;
-      FVisibility: TatVariableVisibility;
+      FVisibility: TxbVariableVisibility;
       function GetValue: TScriptValue;
       procedure SetValue(AValue: TScriptValue);
       function Script: TxbScript;
@@ -762,6 +794,11 @@ Type
       procedure SetDeclaredClassName(const Value: string);
       procedure PullSystemType;
     public
+      constructor Create(ACollection: TCollection); override;
+      ///  <summary>
+      ///  Used by compiler. Do not use this function.
+      ///  </summary>
+      procedure SetTypeFromString(ATypeStr: string);
       ///  <remarks>
       ///  VarIndex is used by the compiler to know the position of the variable in the stack, relative to the current
       ///  stack base. With regarding to the stack, local variables are located in a positive index from stack base,
@@ -774,6 +811,15 @@ Type
       ///  Indicates if the variable is a global variable or not.
       ///  </summary>
       property Global: boolean read FGlobal write FGlobal;
+
+      ///  <remarks>
+      ///  Contains the name of the declared type of variable. For example, if the variable was declared.
+      ///  <code>
+      ///  var MyVar: integer;
+      ///  </code>
+      ///  TypeDecl will contain 'integer'.
+      ///  </remarks>
+      property TypeDecl: string read FTypeDecl write FTypeDecl;
   end;
 
   ///  <remarks>
@@ -1502,6 +1548,34 @@ begin
 
 end;
 
+function TxbScript.DeclareVariable(AName: string; AArgIndex: integer;
+  AModifier: TxbArgumentModifier; AGlobal: boolean;
+  ASourcePos: integer): TxbVariableInfo;
+begin
+  if ASourcePos = -1 then
+    ASourcePos := FParser.ScanningInputPos;
+  if AGlobal then
+  begin
+    if Assigned(ScriptInfo.Globals.FindByName(AName)) then
+      CompileError(Format('Redeclaration of global identifier ''%s''', [AName]),
+        FParser.ScanningInputPos);
+    Result := ScriptInfo.Globals.Add;
+    with Result do
+    begin
+      FVarName := AName;
+      FArgIndex := AArgIndex;
+      FModifier := AModifier;
+      FGlobal := True;
+      FDeclarationSourcePos := ASourcePos
+    end;
+  end else
+  begin
+    if Assigned(CurrentRoutine.VariableByName(AName)) then
+      CompileError(Format('Redeclaration of identifier ''%s''', [AName]), ASourcePos);
+    Result := CurrentRoutine.DeclareVariable(AName, ASourcePos, AArgIndex, AModifier);
+  end;
+end;
+
 procedure TxbScript.DefineReferenceAddress(Name: string);
 var
   LabelSpec: pLabelSpec;
@@ -1752,6 +1826,12 @@ end;
 
 { TxbVariableInfo }
 
+constructor TxbVariableInfo.Create(ACollection: TCollection);
+begin
+  inherited;
+  FVisibility := vvPublic;
+end;
+
 function TxbVariableInfo.GetDeclaredClassName: string;
 begin
 
@@ -1768,7 +1848,35 @@ begin
 end;
 
 procedure TxbVariableInfo.PullSystemType;
+var
+  s : String;
 begin
+  s := LowerCase(FTypeDecl);
+  if s = 'integer' then
+    FSystemType := vtInteger
+  else if s = 'boolean' then
+    FSystemType := vtBoolean
+  else if s = 'char' then
+    FSystemType := vtChar
+  else if s = 'extended' then
+    FSystemType := vtExtended
+  else if s = 'int64' then
+    FSystemType := vtInt64
+  else if s = 'longint'  then
+    FSystemType := vtLongint
+  else if s = 'single' then
+    FSystemType := vtSingle
+  else if s = 'byte' then
+    FSystemType := vtByte
+  else if s = 'string' then
+    FSystemType := vtUnicodeString
+  else if s = 'double' then
+    FSystemType := vtDouble
+  else if s = 'real' then
+    FSystemType := vtReal
+  else
+    FSystemType := -1;
+
 
 end;
 
@@ -1787,6 +1895,12 @@ end;
 procedure TxbVariableInfo.SetDeclaredClassName(const Value: string);
 begin
 
+end;
+
+procedure TxbVariableInfo.SetTypeFromString(ATypeStr: string);
+begin
+//  FDeclaredClass := ScriptInfo.Script.Scripter.Classes.ClassByName(ATypeStr);
+  PullSystemType;
 end;
 
 procedure TxbVariableInfo.SetValue(AValue: TScriptValue);
@@ -1865,9 +1979,28 @@ begin
   result := TxbVariableInfo(inherited Add);
 end;
 
+function TxbVariablesInfo.FindByName(AName: string): TxbVariableInfo;
+var
+  i : Integer;
+begin
+  i := IndexOf(AName);
+  if i > -1 then
+    Result := Items[i]
+  else
+    Result := nil;
+end;
+
 function TxbVariablesInfo.GetItem(i: Integer): TxbVariableInfo;
 begin
   Result := TxbVariableInfo(inherited Items[i]);
+end;
+
+function TxbVariablesInfo.IndexOf(AName: string): integer;
+begin
+  for Result := Count-1 downto 0 do
+   if CompareText(Items[Result].FVarName, AName) = 0 then
+     exit;
+  Result := -1;
 end;
 
 { TxbMethods }
@@ -1972,6 +2105,17 @@ end;
 function TxbRoutineInfo.LocalVarCount: integer;
 begin
   Result := FVariables.Count - FArgCount;
+end;
+
+function TxbRoutineInfo.VariableByName(AName: string): TxbVariableInfo;
+var
+  i : Integer;
+begin
+  i := FVariables.IndexOf(AName);
+  if i > -1 then
+    Result := FVariables[i]
+  else
+    Result := nil;
 end;
 
 Initialization

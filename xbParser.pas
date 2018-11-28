@@ -84,14 +84,18 @@ Type
 
        procedure SetInputInitialPos(const Value: integer);
        procedure SetInputFinalPos(const Value: integer);
+       function GetItem(i: integer): TNoTerminalNode;
      public
        constructor Create(ACollection:TCollection); override;
        destructor Destroy; override;
 
+       property NoTerminalIndex:integer read FNoTerminalIndex write FNoTerminalIndex;
        property InputInitialPos:integer read FInputInitialPos write SetInputInitialPos;
        property InputFinalPos:integer read FInputFinalPos write SetInputFinalPos;
        property Nodes:TNoTerminalNodes read FNodes write FNodes;
+       property InputToken:string read GetInputToken;
        property NoTerminal:TNoTerminal read GetNoTerminal;
+       property Items[i:integer]:TNoTerminalNode read GetItem; default;
        property xbSyntaxParser:TxbSyntaxParser read FxbSyntaxParser;
    end;
 
@@ -260,6 +264,11 @@ end;
 function TNoTerminalNode.GetInputToken: String;
 begin
   result := Copy(FxbSyntaxParser.FInput,FInputInitialPos,FInputFinalPos-FInputInitialPos+1);
+end;
+
+function TNoTerminalNode.GetItem(i: integer): TNoTerminalNode;
+begin
+  Result := FNodes[i];
 end;
 
 function TNoTerminalNode.GetNoTerminal: TNoTerminal;

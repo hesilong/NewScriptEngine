@@ -55,6 +55,7 @@ Type
       procedure BeforeSubRoutine( Node:TNoTerminalNode );
       procedure AfterSubRoutine( Node:TNoTerminalNode );
       procedure AfterInputArgs(Node: TNoTerminalNode);
+      procedure AfterVarDecl(Node: TNoTerminalNode);
     public
       constructor Create(ACollection:TCollection); override;
       destructor Destroy; override;
@@ -305,6 +306,42 @@ begin
       begin
         vDebugInfo := Parser.ScanningInputPos;
       end;
+    end;
+end;
+
+procedure TxbPascalScript.AfterVarDecl(Node: TNoTerminalNode);
+var
+  c,d : Integer;
+  variable : TxbVariableInfo;
+  typeNode : TNoTerminalNode;
+begin
+  for c := 0 to Node.Nodes.Count-1 do
+    with Node[c] do  // <==> Node.Items[c]
+    begin
+      {Node[c] is <varlist>}
+
+      { check to see if a type was explicited to variable }
+      if Nodes[Nodes.Count-1].NoTerminalIndex = ord(noVarType) then
+        typeNode := Nodes[Nodes.Count-1]
+      else
+        typeNode := nil;
+
+      for d := 0 to Nodes.Count-1 do
+        begin
+          if Nodes[d].NoTerminalIndex=ord(noID) then  // <==> Nodes.Items[d]
+            begin
+              {declare a variable}
+              variable := DeclareVariable(Nodes[d].InputToken, -1, moNone, not Assigned(CurrentRoutine), Nodes[d].InputInitialPos);
+
+              if typeNode <> nil then
+              begin
+                variable.SetTypeFromString( typeNode.InputToken);
+                variable.TypeDecl := typeNode.InputToken;
+              end;
+            end;
+        end;
+      {remove}
+      StackPop( stIdentifierList );
     end;
 end;
 
