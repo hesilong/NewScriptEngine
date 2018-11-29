@@ -56,6 +56,7 @@ Type
       procedure AfterSubRoutine( Node:TNoTerminalNode );
       procedure AfterInputArgs(Node: TNoTerminalNode);
       procedure AfterVarDecl(Node: TNoTerminalNode);
+      procedure AfterConstExpr(Node: TNoTerminalNode);
     public
       constructor Create(ACollection:TCollection); override;
       destructor Destroy; override;
@@ -277,9 +278,62 @@ const
 
 { TxbPascalScript }
 
-procedure TxbPascalScript.AfterInputArgs(Node: TNoTerminalNode);
+procedure TxbPascalScript.AfterConstExpr(Node: TNoTerminalNode);
 begin
+//  OptimizeStoreVar(
+//    DeclareVariable(Node.Nodes[0].InputToken, -1, moConst, not Assigned(CurrentRoutine), Node.Nodes[0].InputInitialPos ), True );
+end;
 
+procedure TxbPascalScript.AfterInputArgs(Node: TNoTerminalNode);
+var
+  c,c1 : Integer;
+  argc,nc : Integer;
+  variable : TxbVariableInfo;
+  typeNode : TNoTerminalNode;
+begin
+  with CurrentRoutine do
+  begin
+    argc := 0;
+    for c := 0 to Node.Nodes.Count-1 do
+      begin
+        nc := Node[c].Nodes.Count;
+        if Node[c][nc-1].NoTerminalIndex = ord(noVarType) then
+          typeNode := Node[c][nc-1]
+        else
+          typeNode := nil;
+
+        { Node[c] is a <byref> or a <byvalue> }
+        for c1 := 0 to nc-1 do
+        begin
+          { Node[c][c1] is a <varname> or a <vartype> }
+          if Node[c][c1]<>typeNode then
+            begin
+              if Node[c].NoTerminalIndex = ord(noByRef) then
+                variable := DeclareVariable(Node[c][c1][0].InputToken, Node[c][c1][0].InputInitialPos,argc,moVar)
+              else
+                variable := DeclareVariable(Node[c][c1][0].InputToken, Node[c][c1][0].InputInitialPos,argc);
+
+              if typeNode <> nil then
+              begin
+                variable.TypeDecl := typeNode.InputToken;
+                variable.SetTypeFromString(variable.TypeDecl);
+              end;
+
+              StackPop(stIdentifierList);
+              Inc(argc);
+
+            end;
+
+        end;
+      end;
+    if IsFunction then
+    begin
+      variable := DeclareVariable('Result',Parser.ScanningInputPos);
+      ResultIndex := variable.VarIndex;
+      variable.TypeDecl := ResultTypeDecl;
+      variable.SetTypeFromString(variable.TypeDecl);
+    end;
+  end;
 end;
 
 procedure TxbPascalScript.AfterMain(Node: TNoTerminalNode);
@@ -387,6 +441,9 @@ begin
 
     Items[ ord(noMain)           ].AssignNodeScanningEvents( BeforeMain,        AfterMain );
     Items[ ord(noSubRoutine)     ].AssignNodeScanningEvents( BeforeSubRoutine,  AfterSubRoutine );
+    Items[ ord(noInputArgs)      ].AssignNodeScanningEvents( nil,               AfterInputArgs );
+    Items[ ord(noVarDecl)        ].AssignNodeScanningEvents( nil,               AfterVarDecl );
+    Items[ ord(noConstExpr)      ].AssignNodeScanningEvents( nil,               AfterConstExpr );
   end;
 
 end;

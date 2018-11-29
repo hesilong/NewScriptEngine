@@ -679,6 +679,9 @@ type
       FArgCount: integer;
       FByRefArgMask: integer;
       FResultIndex: integer;
+      FResultTypeDecl: string;
+      function GetResultTypeDecl: string;
+      procedure SetResultTypeDecl(const Value: string);
     public
       ///  <summary>
       ///  Returns a TatVariableInfo object related to the variable (or parameter) specified by the name AName. If the variable
@@ -725,6 +728,16 @@ type
       ///  is provided by this property.
       ///  </remarks>
       property ResultIndex: integer read FResultIndex write FResultIndex;
+
+      ///  <remarks>
+      ///  Contains the identifier of the result type of the declared function routine. For example, if you declare the
+      ///  following routine in script.
+      ///  <code>
+      ///  function MyFunction: string;
+      ///  </code>
+      ///  ResultTypeDecl will be 'string'.
+      ///  </remarks>
+      property ResultTypeDecl: string read GetResultTypeDecl write SetResultTypeDecl;
   end;
 
   ///  <remarks>
@@ -2102,9 +2115,20 @@ begin
     FByRefArgMask := FByRefArgMask or (1 shl AArgIndex);
 end;
 
+function TxbRoutineInfo.GetResultTypeDecl: string;
+begin
+  Result := FResultTypeDecl;
+end;
+
 function TxbRoutineInfo.LocalVarCount: integer;
 begin
   Result := FVariables.Count - FArgCount;
+end;
+
+procedure TxbRoutineInfo.SetResultTypeDecl(const Value: string);
+begin
+  FResultTypeDecl := Value;
+//  SetTypeFromString(FResultTypeDecl);
 end;
 
 function TxbRoutineInfo.VariableByName(AName: string): TxbVariableInfo;
