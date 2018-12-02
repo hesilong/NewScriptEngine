@@ -79,6 +79,7 @@ Type
        FNodes           : TNoTerminalNodes;
        FxbSyntaxParser  : TxbSyntaxParser;
        function GetInputToken:String;
+       function GetOwnerNodes:TNoTerminalNodes;
        function GetInputChar(i:integer):char;
        function GetNoTerminal:TNoTerminal;
 
@@ -89,6 +90,7 @@ Type
        constructor Create(ACollection:TCollection); override;
        destructor Destroy; override;
 
+       property OwnerNodes: TNoTerminalNodes read GetOwnerNodes;
        property NoTerminalIndex:integer read FNoTerminalIndex write FNoTerminalIndex;
        property InputInitialPos:integer read FInputInitialPos write SetInputInitialPos;
        property InputFinalPos:integer read FInputFinalPos write SetInputFinalPos;
@@ -274,6 +276,11 @@ end;
 function TNoTerminalNode.GetNoTerminal: TNoTerminal;
 begin
   result := FxbSyntaxParser.FNoTerminals[FNoTerminalIndex];
+end;
+
+function TNoTerminalNode.GetOwnerNodes: TNoTerminalNodes;
+begin
+  Result := TNoTerminalNodes(Collection);
 end;
 
 procedure TNoTerminalNode.SetInputFinalPos(const Value: integer);

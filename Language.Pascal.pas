@@ -57,6 +57,9 @@ Type
       procedure AfterInputArgs(Node: TNoTerminalNode);
       procedure AfterVarDecl(Node: TNoTerminalNode);
       procedure AfterConstExpr(Node: TNoTerminalNode);
+      procedure AfterPushOutput( Node:TNoTerminalNode );
+      procedure BeforeFor( Node:TNoTerminalNode );
+      procedure AfterFor( Node:TNoTerminalNode );
     public
       constructor Create(ACollection:TCollection); override;
       destructor Destroy; override;
@@ -280,8 +283,61 @@ const
 
 procedure TxbPascalScript.AfterConstExpr(Node: TNoTerminalNode);
 begin
-//  OptimizeStoreVar(
-//    DeclareVariable(Node.Nodes[0].InputToken, -1, moConst, not Assigned(CurrentRoutine), Node.Nodes[0].InputInitialPos ), True );
+  OptimizeStoreVar(
+    DeclareVariable(Node.Nodes[0].InputToken, -1, moConst, not Assigned(CurrentRoutine), Node.Nodes[0].InputInitialPos ), True );
+end;
+
+procedure TxbPascalScript.AfterFor(Node: TNoTerminalNode);
+var
+  VarName : string;
+  VarIndex : Integer;
+  IsGlobal : boolean;
+  tempinst : TInstruction;
+  step : double;
+begin
+  DefineReferenceAddress('@ForStep'+FCurrentFor.ToString);
+  step := StackPopAsDouble(stContext);
+  if Frac(step) = 0 then
+  begin
+    with AppendInstruction(inPushInteger)^ do
+    begin
+      vInt64 := round(step);
+      vDebugInfo := Parser.ScanningInputPos;
+    end;
+  end else
+  begin
+    with  AppendInstruction(inPushDouble)^ do
+    begin
+      vDouble := step;
+      vDebugInfo := Parser.ScanningInputPos;
+    end;
+  end;
+
+  IsGlobal := StackPopAsBool(stContext);
+  VarIndex := StackPopAsInt(stContext);
+  VarName := StackPopAsString(stContext);
+
+  if IsGlobal then
+     tempinst := inPushGlobalVar
+   else
+     tempinst := inPushVar;
+
+  with AppendInstruction(tempinst)^ do
+   begin
+      vInteger   := VarIndex;
+      vString    := VarName;
+      vDebugInfo := Parser.ScanningInputPos;
+   end;
+
+  with AppendInstruction(inJump)^ do
+  begin
+    vInteger := RegisterReference('@ForLoop'+FCurrentFor.ToString);
+    vDebugInfo  := Parser.ScanningInputPos;
+  end;
+
+  DefineReferenceAddress('@EndFor'+FCurrentFor.ToString);
+  FCurrentLoop := TLoopStatement(StackPopAsInt(stContext));
+  FCurrentFor := StackPopAsInt(stContext);
 end;
 
 procedure TxbPascalScript.AfterInputArgs(Node: TNoTerminalNode);
@@ -339,6 +395,20 @@ end;
 procedure TxbPascalScript.AfterMain(Node: TNoTerminalNode);
 begin
   AfterSubRoutine( Node );
+end;
+
+procedure TxbPascalScript.AfterPushOutput(Node: TNoTerminalNode);
+var
+  c:Integer;
+begin
+  for c := 0 to Node.OwnerNodes.Count-3 do
+   begin
+     with AppendInstruction(inPushOutput)^ do
+     begin
+       vInteger := c;
+       vDebugInfo := Parser.ScanningInputPos;
+     end;
+   end;
 end;
 
 procedure TxbPascalScript.AfterSubRoutine(Node: TNoTerminalNode);
@@ -399,6 +469,15 @@ begin
     end;
 end;
 
+procedure TxbPascalScript.BeforeFor(Node: TNoTerminalNode);
+begin
+  StackPush(stContext,FCurrentFor);
+  inc(FForCount);
+  FCurrentFor := FForCount;
+  StackPush(stContext,Ord(FCurrentLoop));
+  FCurrentLoop := lsFor;
+end;
+
 procedure TxbPascalScript.BeforeMain(Node: TNoTerminalNode);
 begin
    { simulate AfterId}
@@ -444,6 +523,7 @@ begin
     Items[ ord(noInputArgs)      ].AssignNodeScanningEvents( nil,               AfterInputArgs );
     Items[ ord(noVarDecl)        ].AssignNodeScanningEvents( nil,               AfterVarDecl );
     Items[ ord(noConstExpr)      ].AssignNodeScanningEvents( nil,               AfterConstExpr );
+    Items[ ord(noPush_Output)    ].AssignNodeScanningEvents( nil,               AfterPushOutput );
   end;
 
 end;

@@ -392,10 +392,15 @@ type
       procedure SolveUndefinedReferences;
       function EmptyStack(StackType: TStackType): boolean;
       function StackPop(StackType: TStackType): TScriptValue;
+      function StackPopAsString(StackType: TStackType): string;
+      function StackPopAsDouble(StackType: TStackType): double;
+      function StackPopAsBool(StackType: TStackType): boolean;
+      function StackPopAsInt(StackType: TStackType): integer;
       function DeclareVariable(AName: string; AArgIndex: integer = -1;
         AModifier: TxbArgumentModifier = moNone; AGlobal: boolean = false; ASourcePos: integer = -1)
         : TxbVariableInfo;
       function AppendInstruction(i: TInstruction): pSimplifiedCode;
+      procedure OptimizeStoreVar(AVar: TxbVariableInfo; AIgnoreConstant: boolean = false);
       procedure DisposeCode(var Code: pSimplifiedCode);
       ///<summary>vProc.Data to relative class indexing</summary>
       procedure RelativeMethodRef(AMethod: TxbMethod; AInst: pSimplifiedCode);
@@ -819,6 +824,16 @@ type
       ///  You don't need to use this method.
       ///  </remarks>
       function VarIndex: integer;
+
+      ///  <summary>
+      ///  Holds the name of the declared variable.
+      ///  </summary>
+      property VarName: string read FVarName write FVarName;
+
+      ///  <summary>
+      ///  If it is an input parameter, Modifier will hold the modifier used in routine declaration ("var", "const", none, etc.).
+      ///  </summary>
+      property Modifier: TxbArgumentModifier read FModifier write FModifier;
 
       ///  <summary>
       ///  Indicates if the variable is a global variable or not.
@@ -1689,6 +1704,104 @@ begin
   FLastLabelSpec := Result;
 end;
 
+procedure TxbScript.OptimizeStoreVar(AVar: TxbVariableInfo;
+  AIgnoreConstant: boolean);
+begin
+  if (AVar.Modifier = moConst) and not AIgnoreConstant then
+    CompileError(Format('Cannot assign a value to constant ''%s''', [AVar.VarName]),
+     FParser.ScanningInputPos);
+  with AVar, FLastInstruction^ do
+  begin
+    if not Global then
+    begin
+      case OpCode of
+        {Transform PushInteger To StoreVarInteger}
+        inPushInteger: begin
+          if Modifier = moVar then
+            OpCode := inStoreVarRefInteger
+          else
+            OpCode := inStoreVarInteger;
+          vInt64 := vInt64;
+          vInteger := VarIndex;
+          vString := VarName;
+        end;
+        {transform PushString to StoreVarString}
+        inPushString: begin
+          if Modifier = moVar then
+            OpCode := inStoreVarRefString
+          else
+            OpCode := inStoreVarString;
+          vInteger := VarIndex;
+          vInteger3 := Length(vString);
+          vString := vString + VarName;
+        end;
+        {transform PushDouble to StoreVarDouble}
+        inPushDouble: begin
+          if Modifier = moVar then
+            OpCode := inStoreVarRefDouble
+          else
+            OpCode := inStoreVarDouble;
+          vInteger := VarIndex;
+          vString := VarName;
+        end;
+        {transform PushConst to StoreVarConst}
+        inPushConst: begin
+          if Modifier = moVar then
+            OpCode := inStoreVarRefConst
+          else
+            OpCode := inStoreVarConst;
+          vInteger := VarIndex;
+          vInteger3 := Length(vString);
+          vString := vString + VarName;
+        end;
+        {transform PushVar to CopyVar}
+        inPushVar: begin
+          if Modifier = moVar then
+            OpCode := inCopyVarRef
+          else
+            OpCode := inCopyVar;
+          vInteger2 := VarIndex;
+          vInteger3 := Length(vString);
+          vString := vString + VarName;
+        end;
+      else
+        if Modifier = moVar then
+        begin
+          with AppendInstruction(inStoreVarRef)^ do
+          begin
+            vInteger := VarIndex;
+            vString := VarName;
+            vDebugInfo := FParser.ScanningInputPos;
+          end;
+        end else
+        begin
+          with AppendInstruction(inStoreVar)^ do
+          begin
+            vInteger := VarIndex;
+            vString := VarName;
+            vDebugInfo := FParser.ScanningInputPos;
+          end;
+        end;
+
+      end;
+    end else 
+    if Modifier = moVar then
+    begin
+      CompileError(Format('Internal error: Trying to generate StoreGlobalVarRef(%s)',[AVar.VarName]),
+        FParser.ScanningInputPos);
+    end else 
+    begin
+      with AppendInstruction(inStoreGlobalVar)^ do
+      begin
+        vInteger := VarIndex;
+        vString := VarName;
+
+        vDebugInfo := FParser.ScanningInputPos;
+      end;
+    end;
+  end;
+end;
+
 function TxbScript.RegisterReference(Name: string): integer;
 var
   LabelSpec: pLabelSpec;
@@ -1816,6 +1929,26 @@ begin
   Result := FStack[StackType]^.Element;
   Dispose(FStack[StackType]);
   FStack[StackType] := aux;
+end;
+
+function TxbScript.StackPopAsBool(StackType: TStackType): boolean;
+begin
+ Result := StackPop(StackType);
+end;
+
+function TxbScript.StackPopAsDouble(StackType: TStackType): double;
+begin
+  Result := StackPop(StackType);
+end;
+
+function TxbScript.StackPopAsInt(StackType: TStackType): integer;
+begin
+ Result := StackPop(StackType);
+end;
+
+function TxbScript.StackPopAsString(StackType: TStackType): string;
+begin
+  Result := StackPop(StackType);
 end;
 
 procedure TxbScript.StackPush(StackType: TStackType; x: TScriptValue);
