@@ -262,6 +262,9 @@ type
       FDefaultInstances: TxbObjects;
       FClasses: TxbClasses;
 
+      { event handling }
+      FShortBooleanEval: boolean;
+
       {#region-get}
       function GetSourceCode: TStrings;
       {#endregion-get}
@@ -270,6 +273,8 @@ type
       procedure SetSourceCode(const Value: TStrings);
       procedure SetClasses(const Value: TxbClasses);
       {#endregion-set}
+
+      procedure InternalRuntimeError(msg: string; AScript: TxbScript);
 
     protected
       procedure DefineInternalClasses; virtual;
@@ -313,6 +318,16 @@ type
       ///  When you call a DefineClass method, an entry is added in this collection.
       ///  </remarks>
       property Classes: TxbClasses read FClasses write SetClasses;
+
+      ///  <remarks>
+      ///  When ShortBooleanEval property is true, the boolean expression will be available only when needed, just like Delphi.
+      ///  For example, for an expression "if (IsEnabled) or (IsVisible) then..." , if IsEnabled returns true, the method
+      ///  IsVisible is not even called, because the boolean value of expression is already known to be true.
+      ///  When ShortBooleanEval property is false, the whole boolean expression is evaluated.
+      ///  ShortBooleanEval is false by default in old TatPascalScripter and TatBasicScripter for backward compatibility.
+      ///  In TatScripter component, it is true by default.
+      ///  </remarks>
+      property ShortBooleanEval: boolean read FShortBooleanEval write FShortBooleanEval;
   end;
 
   TxbVirtualMachine = class;
@@ -373,7 +388,7 @@ type
 
       procedure InternalCompile(Silent: boolean);
       procedure SetCompiled(const Value: boolean);
-
+      procedure GetRowColFromInst(Inst: pSimplifiedCode; var row, col: integer);
     protected
       procedure CompileError(msg: string; debuginfo: integer);
 
@@ -381,6 +396,7 @@ type
       procedure SourceCodeChange(Sender: TObject);
 
       procedure StackPush(StackType: TStackType; x: TScriptValue);
+      procedure StackPushDelimitter(StackType: TStackType);
       procedure ClearLabelSpecs;
       procedure ClearStacks;
 
@@ -390,12 +406,16 @@ type
       procedure SolveReference(LabelSpec: pLabelSpec);
       procedure DefineReferenceAddress(Name: string);
       procedure SolveUndefinedReferences;
+      function RegisterVariableReference(id: string): TxbVariableInfo;
       function EmptyStack(StackType: TStackType): boolean;
       function StackPop(StackType: TStackType): TScriptValue;
       function StackPopAsString(StackType: TStackType): string;
       function StackPopAsDouble(StackType: TStackType): double;
       function StackPopAsBool(StackType: TStackType): boolean;
       function StackPopAsInt(StackType: TStackType): integer;
+      function StackViewAsInt(StackType: TStackType): integer;
+      function StackView(StackType: TStackType): TScriptValue;
+      function StackDelimitterFound(StackType: TStackType): boolean;
       function DeclareVariable(AName: string; AArgIndex: integer = -1;
         AModifier: TxbArgumentModifier = moNone; AGlobal: boolean = false; ASourcePos: integer = -1)
         : TxbVariableInfo;
@@ -409,6 +429,11 @@ type
     public
       constructor Create(ACollection: TCollection); override;
       destructor Destroy; override;
+
+      ///  <summary>
+      ///  Raises a runtime error with the specified message
+      ///  </summary>
+      procedure RuntimeError(msg: string);
 
       ///  <remarks>
       ///  Use Clear method to clear all info about script compilation. When Clear method is called, the Compiled property is
@@ -1035,6 +1060,20 @@ begin
     Result := FCurrentScript.SourceCode
 end;
 
+procedure TxbBaseScripter.InternalRuntimeError(msg: string; AScript: TxbScript);
+var
+  row, col: Integer;
+begin
+  row := 0;
+  col := 0;
+  if (AScript <> nil) and (AScript.VirtualMachine <> nil) and
+    (AScript.VirtualMachine.FCurrentInstruction <> nil) then
+    AScript.GetRowColFromInst(AScript.VirtualMachine.FCurrentInstruction, row, col);
+
+  raise Exception.CreateFmt('RUNTIME ERROR'#13#10'%s'#13#10'Position: %d, %d',
+    [msg, Row, Col]);
+end;
+
 procedure TxbBaseScripter.SetClasses(const Value: TxbClasses);
 begin
   FClasses.Assign(Value);
@@ -1650,6 +1689,12 @@ begin
     Result := Result^.Next;
 end;
 
+procedure TxbScript.GetRowColFromInst(Inst: pSimplifiedCode; var row,
+  col: integer);
+begin
+  GetRowColFromSource(Inst^.vDebugInfo, row, col);
+end;
+
 procedure TxbScript.GetRowColFromSource(APos: integer; var row, col: integer);
 begin
   GetRowColFromStrings(FParser.Strings, APos, row, col);
@@ -1829,6 +1874,15 @@ begin
   end;
 end;
 
+function TxbScript.RegisterVariableReference(id: string): TxbVariableInfo;
+begin
+  Result := CurrentRoutine.VariableByName(id);
+  if Result = nil then
+    Result := ScriptInfo.Globals.FindByName(id);
+  if not Assigned(Result) then
+    Result := CurrentRoutine.DeclareVariable(id,FParser.ScanningInputPos);
+end;
+
 procedure TxbScript.SolveReference(LabelSpec: pLabelSpec);
 var
   Ref: pAddress;
@@ -1884,6 +1938,12 @@ begin
    end;
 end;
 
+procedure TxbScript.RuntimeError(msg: string);
+begin
+  if Assigned(FBaseScripter) then
+   FBaseScripter.InternalRuntimeError(msg, self);
+end;
+
 procedure TxbScript.SetCompiled(const Value: boolean);
 begin
   if FCompiled <> Value then
@@ -1916,6 +1976,11 @@ begin
           clear;
         end;
     end;
+end;
+
+function TxbScript.StackDelimitterFound(StackType: TStackType): boolean;
+begin
+  Result := VarIsNull(StackView(StackType));
 end;
 
 function TxbScript.StackPop(StackType: TStackType): TScriptValue;
@@ -1968,6 +2033,25 @@ begin
     else
       Index := Previous^.Index + 1;
   end;
+end;
+
+procedure TxbScript.StackPushDelimitter(StackType: TStackType);
+begin
+  StackPush(StackType, NullValue);
+end;
+
+function TxbScript.StackView(StackType: TStackType): TScriptValue;
+begin
+  if FStack[StackType] = nil then
+    RuntimeError('Empty stack when trying to pop element ' + GetEnumName(TypeInfo(TStackType),
+      ord(StackType)));
+
+  Result := FStack[StackType]^.Element;
+end;
+
+function TxbScript.StackViewAsInt(StackType: TStackType): integer;
+begin
+  Result := StackView(StackType);
 end;
 
 { TxbVariableInfo }

@@ -86,6 +86,7 @@ Type
        procedure SetInputInitialPos(const Value: integer);
        procedure SetInputFinalPos(const Value: integer);
        function GetItem(i: integer): TNoTerminalNode;
+       function GetStrToken: string;
      public
        constructor Create(ACollection:TCollection); override;
        destructor Destroy; override;
@@ -96,6 +97,7 @@ Type
        property InputFinalPos:integer read FInputFinalPos write SetInputFinalPos;
        property Nodes:TNoTerminalNodes read FNodes write FNodes;
        property InputToken:string read GetInputToken;
+       property StrToken:string read GetStrToken;
        property NoTerminal:TNoTerminal read GetNoTerminal;
        property Items[i:integer]:TNoTerminalNode read GetItem; default;
        property xbSyntaxParser:TxbSyntaxParser read FxbSyntaxParser;
@@ -281,6 +283,62 @@ end;
 function TNoTerminalNode.GetOwnerNodes: TNoTerminalNodes;
 begin
   Result := TNoTerminalNodes(Collection);
+end;
+
+function TNoTerminalNode.GetStrToken: string;
+  function RemarkStarted(const AInput: string; var ACurPos: integer): boolean;
+
+     function _MatchString(const S: string; AInputPos: integer): boolean;
+     var i: integer;
+     begin
+        result:=true;
+        for i:=0 to Length(S)-1 do
+        begin
+           if ((AInputPos+i)>length(AInput)) or (Upcase(AInput[AInputPos+i])<>Upcase(S[i+1])) then
+           begin
+              result:=false;
+              break;
+           end;
+        end;
+     end;
+
+  var
+    c: integer;
+  begin
+     result := false;
+     for c:=0 to FxbSyntaxParser.FComments.Count-1 do
+        if _MatchString(FxbSyntaxParser.FComments[c].OpenString, ACurPos) and
+          (
+            (FxbSyntaxParser.FComments[c].PriorDelims = '') or (ACurPos = 1) or
+            ((ACurPos > 1) and (ACurPos <= Length(AInput)) and
+            (Pos(AInput[ACurPos - 1], FxbSyntaxParser.FComments[c].PriorDelims) <> 0))
+          ) then
+        begin
+           result := true;
+           break;
+        end;
+  end;
+var
+  AInput: string;
+  APos: Integer;
+begin
+  if Assigned(FxbSyntaxParser) then
+  begin
+    result := '';
+    AInput := InputToken;
+    APos := 1;
+    while APos <= Length(AInput) do
+    begin
+      if not RemarkStarted(AInput, APos) then
+      begin
+        if APos <= Length(AInput) then
+          result := result + AInput[APos];
+      end else
+        exit;
+      inc(APos);
+    end;
+  end else
+    result := InputToken;
 end;
 
 procedure TNoTerminalNode.SetInputFinalPos(const Value: integer);
@@ -917,7 +975,7 @@ begin
                   AllowSuggestion := True;
             end;
          end;
-         ttOptional:
+         ttOptional: // 可有可无的结点
          begin
             { sequ阯cia opcional (n鉶 obrigat髍ia) }
             PreserveInitialNodes;
@@ -957,7 +1015,7 @@ begin
                   AllowSuggestion := True;
                end;
          end;
-         ttReplicate:
+         ttReplicate:  // 重复出现的结点
          begin
             { sequ阯cia replic醰el (presente uma ou mais vezes) }
             ObligatorySubExp := True;
@@ -1005,7 +1063,7 @@ begin
                end;
             until (not ObligatorySubExp and not SubExpFound) or (SyntaxResult<>srNotDefined);
          end;
-         ttAchoice:
+         ttAchoice:  // 出现一个或多个
          begin
             { sequ阯cias alternativas
               (uma 鷑ica sequencia deve ser obrigatoriamente extra韉a da lista de op珲es) }

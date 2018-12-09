@@ -60,6 +60,23 @@ Type
       procedure AfterPushOutput( Node:TNoTerminalNode );
       procedure BeforeFor( Node:TNoTerminalNode );
       procedure AfterFor( Node:TNoTerminalNode );
+      procedure AfterForControl( Node:TNoTerminalNode );
+      procedure AfterStep( Node:TNoTerminalNode );
+      procedure BeforeWhile( Node:TNoTerminalNode );
+      procedure AfterWhile( Node:TNoTerminalNode );
+      procedure BeforeWhileControl( Node:TNoTerminalNode );
+      procedure AfterWhileControl( Node:TNoTerminalNode );
+      procedure BeforeRepeat( Node:TNoTerminalNode );
+      procedure BeforeUntil( Node:TNoTerminalNode );
+      procedure AfterUntil( Node:TNoTerminalNode );
+      procedure BeforeIf( Node:TNoTerminalNode );
+      procedure AfterIf( Node:TNoTerminalNode );
+      procedure BeforeThen( Node:TNoTerminalNode );
+      procedure AfterThen( Node:TNoTerminalNode );
+      procedure BeforeElse( Node:TNoTerminalNode );
+      procedure BeforeExpression( Node:TNoTerminalNode );
+      procedure AfterExpression( Node:TNoTerminalNode );
+      procedure AfterOperator( Node:TNoTerminalNode );
     public
       constructor Create(ACollection:TCollection); override;
       destructor Destroy; override;
@@ -287,6 +304,24 @@ begin
     DeclareVariable(Node.Nodes[0].InputToken, -1, moConst, not Assigned(CurrentRoutine), Node.Nodes[0].InputInitialPos ), True );
 end;
 
+procedure TxbPascalScript.AfterExpression(Node: TNoTerminalNode);
+var
+  opInStack: TInstruction;
+  opNumber: Integer;  // 操作符数
+begin
+  { insert all pending operators }
+  while not StackDelimitterFound(stPendingOperators) do
+  begin
+    opInStack := TInstruction(StackViewAsInt(stPendingOperators) shr 20);
+    opNumber := StackPopAsInt(stPendingOperators) and $FFFFF;
+    with AppendInstruction(opInStack)^ do
+      vDebugInfo := Parser.ScanningInputPos;
+    if Scripter.ShortBooleanEval and (opInStack in [inOperAnd, inOperOr]) then
+      DefineReferenceAddress('@Oper'+opNumber.ToString);
+  end;
+ StackPop(stPendingOperators);
+end;
+
 procedure TxbPascalScript.AfterFor(Node: TNoTerminalNode);
 var
   VarName : string;
@@ -338,6 +373,97 @@ begin
   DefineReferenceAddress('@EndFor'+FCurrentFor.ToString);
   FCurrentLoop := TLoopStatement(StackPopAsInt(stContext));
   FCurrentFor := StackPopAsInt(stContext);
+end;
+
+procedure TxbPascalScript.AfterForControl(Node: TNoTerminalNode);
+var
+  variable_end : TxbVariableInfo;
+  variable_count : TxbVariableInfo;
+  step : double;
+  er : Integer;
+  tempinst : TInstruction;
+begin
+  variable_end := CurrentRoutine.DeclareVariable('#ForStop'+FCurrentFor.ToString,Parser.ScanningInputPos);
+  OptimizeStoreVar(variable_end);
+
+  variable_count := RegisterVariableReference(StackPopAsString(stIdentifierList));
+
+  if variable_count.Global then
+  begin
+    tempinst := inStoreGlobalVar;
+  end else
+  begin
+    if variable_count.Modifier=moVar then
+     tempinst := inStoreVarRef else
+     tempinst := inStoreVar;
+  end;
+
+  With AppendInstruction(tempinst)^ do
+  begin
+    vInteger := variable_count.VarIndex;
+    vString := variable_count.VarName;
+    vDebugInfo := Parser.ScanningInputPos;
+  end;
+
+  StackPush(stContext, variable_count.VarName);
+  StackPush(stContext, variable_count.VarIndex);
+  StackPush(stContext, variable_count.Global);
+
+  if variable_count.Global then
+    tempinst := inPushGlobalVar
+  else
+    tempinst := inPushVar;
+
+  with AppendInstruction(tempinst)^ do
+  begin
+    vInteger := variable_count.VarIndex;
+    vString := variable_count.VarName;
+    vDebugInfo := Parser.ScanningInputPos;
+  end;
+
+  with AppendInstruction(inPushVar)^ do
+  begin
+    vInteger := variable_end.VarIndex;
+    vString := variable_end.VarName;
+    vDebugInfo := Parser.ScanningInputPos;
+  end;
+
+  {caculate loop step}
+  if Node.NoTerminalIndex = Ord(noFor_Downto) then
+  begin
+    StackPush(stContext,-1);
+    step := -1;
+  end else
+  begin
+    if Node.OwnerNodes.Count=2 then
+    begin
+      StackPush(stContext,1);
+      step := 1;
+    end else
+      val(Node.OwnerNodes[Node.OwnerNodes.IndexOf(ord(noStep))].InputToken,step,er);
+  end;
+
+  if step<0 then
+    with AppendInstruction(inOperGE)^ do
+    begin
+      vDebugInfo := Parser.ScanningInputPos;
+    end
+  else
+    with AppendInstruction(inOperLE)^ do
+    begin
+      vDebugInfo := Parser.ScanningInputPos;
+    end;
+  with AppendInstruction(inJumpIfFalse)^ do
+  begin
+    vInteger := RegisterReference('@EndFor'+ FCurrentFor.ToString);
+    vDebugInfo := Parser.ScanningInputPos;
+  end;
+end;
+
+procedure TxbPascalScript.AfterIf(Node: TNoTerminalNode);
+begin
+  DefineReferenceAddress('@EndIf'+FCurrentIf.ToString);
+  FCurrentIf := StackPopAsInt(stContext);
 end;
 
 procedure TxbPascalScript.AfterInputArgs(Node: TNoTerminalNode);
@@ -397,6 +523,64 @@ begin
   AfterSubRoutine( Node );
 end;
 
+procedure TxbPascalScript.AfterOperator(Node: TNoTerminalNode);
+var
+  i,op: TInstruction;
+  id: string;
+  opInStack: TInstruction;
+  opNumber: Integer;
+begin
+  { identifies the operator }
+  op := low(TInstruction);  // only to remove a delphi compiler warning
+  id := UpperCase(TrimRight(Node.StrToken));
+  for i := inOperNE to inOperNot do
+  begin
+    if id = PascalOperatorId[i] then
+    begin
+      op := i;
+      break;
+    end;
+  end;
+  Inc(FOperatorCount);
+  FCurrentOperator := FOperatorCount;
+  { resolve operator precedence }
+  while not StackDelimitterFound(stPendingOperators) and
+    (PascalOperatorLevel[TInstruction(StackViewAsInt(stPendingOperators) shr 20)] <=
+      PascalOperatorLevel[op]) do  // level越小优先级越高
+  begin
+    opInStack := TInstruction(StackViewAsInt(stPendingOperators) shr 20);
+    opNumber := StackPopAsInt(stPendingOperators) and $FFFFF;
+    with AppendInstruction(opInStack)^ do
+      vDebugInfo:= Parser.ScanningInputPos;
+    if Scripter.ShortBooleanEval and (opInStack in [inOperAnd, inOperOr]) then
+      DefineReferenceAddress('@per'+opNumber.ToString);
+  end;
+  {if short boolean evaluation, then test if boolean expression was satisfied}
+  if Scripter.ShortBooleanEval then
+  begin
+    case op of
+      inOperOr: begin
+        with AppendInstruction(inTestIfTrue)^ do
+        begin
+          vInteger := RegisterReference('@Oper'+FCurrentOperator.ToString);
+          vDebugInfo := Parser.ScanningInputPos;
+        end;
+      end;
+
+      inOperAnd: begin
+         with AppendInstruction(inTestIfFalse)^ do
+         begin
+          vInteger := RegisterReference('@Oper'+FCurrentOperator.ToString);
+          vDebugInfo := Parser.ScanningInputPos;
+         end;
+      end;
+    end;
+  end;
+
+ { push the operator and its number in stack of pending operators}
+ StackPush(stPendingOperators, (Ord(op) shl 20) or FCurrentOperator);
+end;
+
 procedure TxbPascalScript.AfterPushOutput(Node: TNoTerminalNode);
 var
   c:Integer;
@@ -409,6 +593,15 @@ begin
        vDebugInfo := Parser.ScanningInputPos;
      end;
    end;
+end;
+
+procedure TxbPascalScript.AfterStep(Node: TNoTerminalNode);
+var
+  step : double;
+  er   : integer;
+begin
+   val(Node.InputToken,step,er);
+   StackPush(stContext,step);
 end;
 
 procedure TxbPascalScript.AfterSubRoutine(Node: TNoTerminalNode);
@@ -431,6 +624,32 @@ begin
         vDebugInfo := Parser.ScanningInputPos;
       end;
     end;
+end;
+
+procedure TxbPascalScript.AfterThen(Node: TNoTerminalNode);
+begin
+  if Node.OwnerNodes.Count = 3 then  {if <expression> <then> <else>}
+  begin
+    // <then>:then {<block>|<statement>}
+    { <then>之后，需跳转到if语句之后的代码，即AfterIf定义的@EndIf标号处}
+    with AppendInstruction(inJump)^ do
+    begin
+      vInteger := RegisterReference('@EndIf'+FCurrentIf.ToString);
+      vDebugInfo := Parser.ScanningInputPos;
+    end;
+  end;
+end;
+
+procedure TxbPascalScript.AfterUntil(Node: TNoTerminalNode);
+begin
+  with AppendInstruction(inJumpIfFalse)^ do
+  begin
+    vInteger := RegisterReference('@RepeatLoop'+FCurrentRepeat.ToString);
+    vDebugInfo := Parser.ScanningInputPos;
+  end;
+  DefineReferenceAddress('@EndRepeat'+FCurrentRepeat.ToString);
+  FCurrentLoop := TLoopStatement(StackPopAsInt(stContext));
+  FCurrentRepeat := StackPopAsInt(stContext);
 end;
 
 procedure TxbPascalScript.AfterVarDecl(Node: TNoTerminalNode);
@@ -469,6 +688,39 @@ begin
     end;
 end;
 
+procedure TxbPascalScript.AfterWhile(Node: TNoTerminalNode);
+begin
+  with AppendInstruction(inJump)^ do
+  begin
+    {在 while <while_control> do S 形式下，执行完S需跳转回while_control,即BeforeWhileControl定义的@WhileLoop标号}
+    vInteger := RegisterReference('@WhileLoop'+ FCurrentWhile.ToString);
+    vDebugInfo := Parser.ScanningInputPos;
+  end;
+  DefineReferenceAddress('@EndWhile'+FCurrentWhile.ToString);
+  FCurrentLoop := TLoopStatement(StackPopAsInt(stContext));
+  FCurrentWhile := StackPopAsInt(stContext);
+end;
+
+procedure TxbPascalScript.AfterWhileControl(Node: TNoTerminalNode);
+begin
+  with AppendInstruction(inJumpIfFalse)^ do
+  begin
+    {如果while_control为false,则需要跳转执行while之后的指令，即AfterWhile定义的@EndWhile}
+    vInteger := RegisterReference('@EndWhile'+FCurrentWhile.ToString);
+    vDebugInfo := Parser.ScanningInputPos;
+  end;
+end;
+
+procedure TxbPascalScript.BeforeElse(Node: TNoTerminalNode);
+begin
+  DefineReferenceAddress('@Else'+FCurrentIf.ToString);
+end;
+
+procedure TxbPascalScript.BeforeExpression(Node: TNoTerminalNode);
+begin
+   StackPushDelimitter(stPendingOperators);
+end;
+
 procedure TxbPascalScript.BeforeFor(Node: TNoTerminalNode);
 begin
   StackPush(stContext,FCurrentFor);
@@ -476,6 +728,13 @@ begin
   FCurrentFor := FForCount;
   StackPush(stContext,Ord(FCurrentLoop));
   FCurrentLoop := lsFor;
+end;
+
+procedure TxbPascalScript.BeforeIf(Node: TNoTerminalNode);
+begin
+  StackPush(stContext, FCurrentIf);
+  Inc(FIfCount);
+  FCurrentIf := FIfCount;
 end;
 
 procedure TxbPascalScript.BeforeMain(Node: TNoTerminalNode);
@@ -489,6 +748,16 @@ begin
      CurrentRoutine.ResultIndex := CurrentRoutine.DeclareVariable('Result', Parser.ScanningInputPos ).VarIndex;
 end;
 
+procedure TxbPascalScript.BeforeRepeat(Node: TNoTerminalNode);
+begin
+  StackPush(stContext, FCurrentRepeat);
+  inc(FRepeatCount);
+  FCurrentRepeat := FRepeatCount;
+  StackPush(stContext, Ord(FCurrentLoop));
+  FCurrentLoop := lsRepeat;
+  DefineReferenceAddress('@RepeatLoop'+FCurrentRepeat.ToString);
+end;
+
 procedure TxbPascalScript.BeforeSubRoutine(Node: TNoTerminalNode);
 begin
   if not FThereIsAnySubrot then
@@ -500,6 +769,46 @@ begin
      end;
      FThereIsAnySubrot := true;
   end;
+end;
+
+procedure TxbPascalScript.BeforeThen(Node: TNoTerminalNode);
+begin
+  if Node.OwnerNodes.Count = 2 then { if <expression> <then> }
+  begin
+    { 若发现E为false,则需要跳转到if语句之后的代码，即AfterIf定义的@EndIf标号处}
+    with AppendInstruction(inJumpIfFalse)^ do
+    begin
+      vInteger := RegisterReference('@EndIf'+FCurrentIf.ToString);
+      vDebugInfo := Parser.ScanningInputPos;
+    end;
+  end else  {if <expression> <then> <else>}
+  begin
+    { 若发现E为false,则需要跳转到else的代码，即beforeif定义的@Else标号处}
+    with AppendInstruction(inJumpIfFalse)^ do
+    begin
+      vInteger := RegisterReference('@Else'+FCurrentIf.ToString);
+      vDebugInfo := Parser.ScanningInputPos;
+    end;
+  end;
+end;
+
+procedure TxbPascalScript.BeforeUntil(Node: TNoTerminalNode);
+begin
+  DefineReferenceAddress('@RepeatTest'+inttostr(FCurrentRepeat));
+end;
+
+procedure TxbPascalScript.BeforeWhile(Node: TNoTerminalNode);
+begin
+  StackPush(stContext, FCurrentWhile);
+  FCurrentWhile := FWhileCount;
+  inc(FWhileCount);
+  StackPush(stContext, Ord(FCurrentLoop));
+  FCurrentLoop := lsWhile;
+end;
+
+procedure TxbPascalScript.BeforeWhileControl(Node: TNoTerminalNode);
+begin
+  DefineReferenceAddress('@WhileLoop'+inttostr(FCurrentWhile));
 end;
 
 procedure TxbPascalScript.Clear;
@@ -524,6 +833,22 @@ begin
     Items[ ord(noVarDecl)        ].AssignNodeScanningEvents( nil,               AfterVarDecl );
     Items[ ord(noConstExpr)      ].AssignNodeScanningEvents( nil,               AfterConstExpr );
     Items[ ord(noPush_Output)    ].AssignNodeScanningEvents( nil,               AfterPushOutput );
+    Items[ ord(noBlock)          ].AssignNodeScanningEvents( nil,               nil );
+    Items[ ord(noStatement)      ].AssignNodeScanningEvents( nil,               nil );
+    Items[ ord(noAssign)         ].AssignNodeScanningEvents( nil,               nil );
+    Items[ ord(noFor)            ].AssignNodeScanningEvents( BeforeFor,         AfterFor );
+    Items[ ord(noFor_Control)    ].AssignNodeScanningEvents( nil,               AfterForControl );
+    Items[ ord(noFor_Downto)     ].AssignNodeScanningEvents( nil,               AfterForControl );
+    Items[ ord(noStep)           ].AssignNodeScanningEvents( nil,               AfterStep );
+    Items[ ord(noWhile)          ].AssignNodeScanningEvents( BeforeWhile,       AfterWhile );
+    Items[ ord(noWhile_Control)  ].AssignNodeScanningEvents( BeforeWhileControl,AfterWhileControl );
+    Items[ ord(noRepeat)         ].AssignNodeScanningEvents( BeforeRepeat,      nil );
+    Items[ ord(noUntil)          ].AssignNodeScanningEvents( BeforeUntil,       AfterUntil );
+    Items[ ord(noIf)             ].AssignNodeScanningEvents( BeforeIf,          AfterIf );
+    Items[ ord(noThen)           ].AssignNodeScanningEvents( BeforeThen,        AfterThen );
+    Items[ ord(noElse)           ].AssignNodeScanningEvents( BeforeElse,        nil );
+    Items[ ord(noExpression)     ].AssignNodeScanningEvents( BeforeExpression,  AfterExpression );
+    Items[ ord(noOperator)       ].AssignNodeScanningEvents( nil,               AfterOperator );
   end;
 
 end;
