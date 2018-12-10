@@ -77,6 +77,8 @@ Type
       procedure BeforeExpression( Node:TNoTerminalNode );
       procedure AfterExpression( Node:TNoTerminalNode );
       procedure AfterOperator( Node:TNoTerminalNode );
+      procedure AfterUnary( Node:TNoTerminalNode );
+      procedure AfterLabel( Node:TNoTerminalNode );
     public
       constructor Create(ACollection:TCollection); override;
       destructor Destroy; override;
@@ -518,6 +520,88 @@ begin
   end;
 end;
 
+procedure TxbPascalScript.AfterLabel(Node: TNoTerminalNode);
+var id : string;
+    isFunction : boolean;
+    prototyping : boolean;
+    routine :TxbRoutineInfo;
+    nodes : TNoTerminalNodes;
+    functionNode : TNoTerminalNode;
+    argTypeNodeIndex : Integer;
+    c : Integer;
+begin
+  { SUBROUTINE
+      PROCEDURE / FUNCTION
+        LABEL
+  OR
+    MAIN
+      LABEL  }
+  id := StackPopAsString(stIdentifierList);
+  prototyping := False;
+  if Node.NoTerminalIndex <> ord(noMain) then
+  begin
+   { estamos em um <Subroutine> }
+   nodes := Node.ParentNode.ParentNode.Nodes;
+   for c:=0 to nodes.Count-1 do
+     if xbPASCAL_NOTERMINALS(nodes[c].NoTerminalIndex) in [noForward,noExternal] then
+     begin
+       { estamos em uma declaração Forward ou External }
+       prototyping := True;
+       Break
+     end;
+  end;
+
+  if not prototyping then
+  begin
+    DefineReferenceAddress(id);
+    with AppendInstruction(inPrepare)^ do
+    begin
+      vString := id;
+      vDebugInfo := Node.InputInitialPos;
+    end;
+  end;
+
+
+  isFunction :=
+    (Node.ParentNode.NoTerminalIndex=ord(noFunction)) or
+    (Node.ParentNode.NoTerminalIndex=ord(noMain)) or
+    (Node.NoTerminalIndex=ord(noMain));
+
+  routine := ScriptInfo.RoutineByName(id);
+  if not Assigned(routine) then
+  begin
+    if prototyping then
+    begin
+      CurrentRoutine := ScriptInfo.DeclareRoutine( id, nil, isFunction );
+    end else
+    begin
+      CurrentRoutine := ScriptInfo.DeclareRoutine( id, LastInstruction, isFunction);
+    end;
+//  '<subroutine>:{<procedure> <inputargs>|<function> <inputargs> [":" <id>]} [; ]{<external>|<forward>|[({<constdecl>|<vardecl>})] {<block>|<statement>}}'#13#10+
+    if (Node.ParentNode <> nil) and (Node.ParentNode.ParentNode <> nil) then
+    begin
+      functionNode := Node.ParentNode.ParentNode;  // subroutine
+      argTypeNodeIndex := functionNode.Nodes.IndexOf(Ord(noId));
+      if IsFunction and (argTypeNodeIndex >=0) then
+        CurrentRoutine.ResultTypeDecl := functionNode.Nodes[argTypeNodeIndex].InputToken;
+    end;
+
+  end else
+  begin
+    if prototyping then
+      CompileError( Format('Illegal redeclaration of routine ''%s''',[id]),Parser.ScanningInputPos )
+    else begin
+      if not Assigned(routine.DeclarationInstruction) then
+      begin
+        routine.Name := '#' + routine.Name;
+        CurrentRoutine := ScriptInfo.DeclareRoutine(id, LastInstruction, isFunction);
+  //      CurrentRoutine.Prototype := routine;
+      end else
+        CompileError( Format('Illegal reimplementation of routine ''%s''.'#13#10+'Use forward clause for prototyping',[id]),Parser.ScanningInputPos );
+    end;
+  end;
+end;
+
 procedure TxbPascalScript.AfterMain(Node: TNoTerminalNode);
 begin
   AfterSubRoutine( Node );
@@ -638,6 +722,20 @@ begin
       vDebugInfo := Parser.ScanningInputPos;
     end;
   end;
+end;
+
+procedure TxbPascalScript.AfterUnary(Node: TNoTerminalNode);
+begin
+  Inc(FOperatorCount);
+  FCurrentOperator := FOperatorCount;
+
+  if Node.InputToken = '-' then
+    { numeric complementation unary operator }
+    StackPush(stPendingOperators, (Ord(inOperNeg) shl 20) or FCurrentOperator)
+  else
+    if Node.InputToken <> '+' then
+      { boolean complementation unary operator }
+      StackPush(stPendingOperators, (Ord(inOperNot) shl 20) or FCurrentOperator);
 end;
 
 procedure TxbPascalScript.AfterUntil(Node: TNoTerminalNode);
@@ -849,6 +947,7 @@ begin
     Items[ ord(noElse)           ].AssignNodeScanningEvents( BeforeElse,        nil );
     Items[ ord(noExpression)     ].AssignNodeScanningEvents( BeforeExpression,  AfterExpression );
     Items[ ord(noOperator)       ].AssignNodeScanningEvents( nil,               AfterOperator );
+    Items[ ord(noUnary)          ].AssignNodeScanningEvents( nil,               AfterUnary );
   end;
 
 end;

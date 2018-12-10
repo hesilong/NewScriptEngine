@@ -425,6 +425,7 @@ type
       ///<summary>vProc.Data to relative class indexing</summary>
       procedure RelativeMethodRef(AMethod: TxbMethod; AInst: pSimplifiedCode);
 
+      property LastInstruction: pSimplifiedCode read FLastInstruction write FLastInstruction;
       property CurrentRoutine: TxbRoutineInfo read FCurrentRoutine write FCurrentRoutine;
     public
       constructor Create(ACollection: TCollection); override;
@@ -672,6 +673,12 @@ type
       property Globals: TxbVariablesInfo read FGlobals write SetGlobals;
 
       ///  <summary>
+      ///  Adds a new routine in the script info Routines collection. Do not call this method direclty, it's used internally
+      ///  by the compiler.
+      ///  </summary>
+      function DeclareRoutine(AName: string; ADeclInst: pSimplifiedCode; AIsFunction: boolean)
+        : TxbRoutineInfo;
+      ///  <summary>
       ///  Retrives the number of p-code instructions generated after compilation. In other words, it's the size of the "executable".
       ///  </summary>
       property CodeSize: integer read FCodeSize;
@@ -740,6 +747,11 @@ type
         write FDeclarationInstruction;
 
     published
+      ///  <summary>
+      ///  Contains the name of the declared routine.
+      ///  </summary>
+      property Name: string read FName write FName;
+
       ///  <summary>
       ///  Returns true if the routine returns a result value. In other words, IsFunction is true when the routine is a function,
       ///  false if the routine is a procedure/sub.
@@ -2282,6 +2294,18 @@ begin
 
   FGlobals := TxbVariablesInfo.Create(Self,TxbVariableInfo);
 
+end;
+
+function TxbScriptInfo.DeclareRoutine(AName: string; ADeclInst: pSimplifiedCode;
+  AIsFunction: boolean): TxbRoutineInfo;
+begin
+  Result :=TxbRoutineInfo(TCollection(FRoutines).Add);
+  with Result do
+  begin
+    FName := AName;
+    FDeclarationInstruction := ADeclInst;
+    FIsFunction := AIsFunction;
+  end;
 end;
 
 destructor TxbScriptInfo.Destroy;

@@ -82,6 +82,7 @@ Type
        function GetOwnerNodes:TNoTerminalNodes;
        function GetInputChar(i:integer):char;
        function GetNoTerminal:TNoTerminal;
+       function GetParentNode:TNoTerminalNode;
 
        procedure SetInputInitialPos(const Value: integer);
        procedure SetInputFinalPos(const Value: integer);
@@ -92,6 +93,7 @@ Type
        destructor Destroy; override;
 
        property OwnerNodes: TNoTerminalNodes read GetOwnerNodes;
+       property ParentNode: TNoTerminalNode read GetParentNode;
        property NoTerminalIndex:integer read FNoTerminalIndex write FNoTerminalIndex;
        property InputInitialPos:integer read FInputInitialPos write SetInputInitialPos;
        property InputFinalPos:integer read FInputFinalPos write SetInputFinalPos;
@@ -283,6 +285,14 @@ end;
 function TNoTerminalNode.GetOwnerNodes: TNoTerminalNodes;
 begin
   Result := TNoTerminalNodes(Collection);
+end;
+
+function TNoTerminalNode.GetParentNode: TNoTerminalNode;
+begin
+  if Assigned(Collection) then
+    result := TNoTerminalNodes(Collection).Node
+  else
+    result := nil;
 end;
 
 function TNoTerminalNode.GetStrToken: string;
